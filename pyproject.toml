@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "travel-vlog-agent"
+version = "0.1.0"
+description = "Agentic pipeline to assemble and publish 30-minute travel vlogs."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Josh Woodsy" }]
+dependencies = []
+
+[project.scripts]
+travel-vlog-agent = "travel_vlog_agent.cli:main"
+
+[tool.setuptools]
+packages = ["travel_vlog_agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
