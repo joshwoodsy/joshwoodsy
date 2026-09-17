@@ -203,6 +203,7 @@ test("Phase 0 mock driver API and /d/{link_token} routes", async (t) => {
   const updated = after.body.assignments.find((a) => a.trip_number === "643053");
   assert.equal(updated.status, "exception");
   assert.equal(updated.status_reason, "late");
+  assert.equal(updated.forward, "arrived");
 
   const stolen = await json("/api/driver/stops/643210/status", {
     method: "POST",

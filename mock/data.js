@@ -195,6 +195,7 @@ export function assignmentsPayload(driver, date) {
         status_at: live.at,
         status_reason: live.reason,
         status_note: live.note,
+        forward: live.forward,
       };
     });
   return {
