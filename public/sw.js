@@ -1,4 +1,4 @@
-const CACHE = "driver-shell-v2";
+const CACHE = "driver-shell-v3";
 const SHELL = [
   "/",
   "/index.html",

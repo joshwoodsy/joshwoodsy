@@ -10,6 +10,7 @@ import {
   findDriverBySession,
   sessionPayload,
 } from "./mock/data.js";
+import { applyStatusPost } from "./mock/status.js";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const publicDir = join(root, "public");
@@ -147,11 +148,21 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "POST" && /^\/api\/driver\/stops\/[^/]+\/status$/.test(path)) {
-    json(res, 501, {
-      accepted: false,
-      error: "phase_1_readonly",
-      message: "Status posts in Phase 2.",
-    });
+    const session = findDriverBySession(bearer(req));
+    if (!session) {
+      json(res, 401, { error: "unauthorized" });
+      return true;
+    }
+    const tripNumber = decodeURIComponent(path.split("/")[4]);
+    const body = await readJson(req);
+    if (!body) {
+      json(res, 400, { error: "invalid_json" });
+      return true;
+    }
+    await new Promise((r) => setTimeout(r, 180));
+    const day = assignmentsPayload(session, session.date);
+    const result = applyStatusPost(session, tripNumber, body, day.assignments);
+    json(res, result.http, result.json);
     return true;
   }
 

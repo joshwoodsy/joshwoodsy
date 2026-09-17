@@ -3,6 +3,28 @@ const SESSION_KEY = "driver.session.json";
 const ASSIGN_KEY = "driver.assignments";
 const ETAG_KEY = "driver.etag";
 
+const STATUS_ORDER = ["en_route", "arrived", "loading", "loaded", "complete"];
+const STATUS_LABEL = {
+  en_route: "En route",
+  arrived: "Arrived",
+  loading: "Loading",
+  loaded: "Loaded",
+  complete: "Complete",
+  exception: "Exception",
+};
+const EXCEPTION_REASONS = [
+  { id: "late", label: "Late" },
+  { id: "no_product", label: "No product" },
+  { id: "wait_time", label: "Wait time" },
+  { id: "wrong_temp", label: "Wrong temp" },
+  { id: "other", label: "Other" },
+];
+
+const ui = {
+  exceptionOpen: false,
+  statusError: null,
+};
+
 const api = {
   async auth(payload) {
     return request("POST", "/api/driver/auth", payload);
@@ -20,10 +42,21 @@ const api = {
       `/api/driver/me/assignments?date=${encodeURIComponent(day)}`,
     );
   },
+  async postStatus(trip, payload) {
+    const headers = {};
+    const etag = sessionStorage.getItem(ETAG_KEY);
+    if (etag) headers["If-Match"] = etag;
+    return request(
+      "POST",
+      `/api/driver/stops/${encodeURIComponent(trip)}/status`,
+      payload,
+      headers,
+    );
+  },
 };
 
-async function request(method, path, body) {
-  const headers = { Accept: "application/json" };
+async function request(method, path, body, extraHeaders = {}) {
+  const headers = { Accept: "application/json", ...extraHeaders };
   const token = sessionStorage.getItem(TOKEN_KEY);
   if (token) headers.Authorization = `Bearer ${token}`;
   const etag = sessionStorage.getItem(ETAG_KEY);
@@ -42,8 +75,9 @@ async function request(method, path, body) {
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err = new Error(data.error || "request_failed");
+    const err = new Error(data.error || data.message || "request_failed");
     err.status = res.status;
+    err.body = data;
     throw err;
   }
   const nextTag = res.headers.get("ETag");
@@ -64,6 +98,8 @@ function clearSession() {
   sessionStorage.removeItem(SESSION_KEY);
   sessionStorage.removeItem(ASSIGN_KEY);
   sessionStorage.removeItem(ETAG_KEY);
+  ui.exceptionOpen = false;
+  ui.statusError = null;
 }
 
 function currentSession() {
@@ -76,6 +112,151 @@ function currentSession() {
 
 function sessionDate() {
   return currentSession()?.date || new Date().toISOString().slice(0, 10);
+}
+
+function queueKey() {
+  return `driver.queue.${sessionStorage.getItem(TOKEN_KEY) || "anon"}`;
+}
+
+function overlayKey() {
+  return `driver.status.${sessionStorage.getItem(TOKEN_KEY) || "anon"}`;
+}
+
+function loadQueue() {
+  try {
+    return JSON.parse(localStorage.getItem(queueKey()) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveQueue(q) {
+  localStorage.setItem(queueKey(), JSON.stringify(q));
+}
+
+function overlayMap() {
+  try {
+    return JSON.parse(localStorage.getItem(overlayKey()) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function setOverlay(trip, rec) {
+  const m = overlayMap();
+  m[trip] = rec;
+  localStorage.setItem(overlayKey(), JSON.stringify(m));
+}
+
+function clearOverlay(trip) {
+  const m = overlayMap();
+  delete m[trip];
+  localStorage.setItem(overlayKey(), JSON.stringify(m));
+}
+
+function pendingCount() {
+  return loadQueue().length;
+}
+
+function withLocal(row) {
+  const local = overlayMap()[row.trip_number];
+  if (!local) return row;
+  return { ...row, ...local };
+}
+
+function chicagoStamp(date = new Date()) {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Chicago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+    timeZoneName: "longOffset",
+  });
+  const parts = {};
+  for (const p of fmt.formatToParts(date)) parts[p.type] = p.value;
+  const offset = String(parts.timeZoneName || "GMT-05:00").replace("GMT", "");
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}${offset}`;
+}
+
+function statusRank(status) {
+  return STATUS_ORDER.indexOf(status);
+}
+
+function forwardOf(row) {
+  if (row.forward) return row.forward;
+  if (row.status && row.status !== "exception") return row.status;
+  return null;
+}
+
+async function tapStatus(tripNumber, status, extra = {}) {
+  const row = overlayMap()[tripNumber] || {};
+  const event = {
+    trip_number: tripNumber,
+    status,
+    at: chicagoStamp(),
+    note: extra.note || null,
+    reason: extra.reason || null,
+    client_event_id: crypto.randomUUID(),
+    prev: row,
+  };
+  const q = loadQueue();
+  q.push(event);
+  saveQueue(q);
+  setOverlay(tripNumber, {
+    status,
+    status_at: event.at,
+    status_reason: event.reason,
+    status_note: event.note,
+    forward: status === "exception" ? forwardOf(row) : status,
+  });
+  ui.exceptionOpen = false;
+  ui.statusError = null;
+  render();
+  await flushQueue();
+}
+
+async function flushQueue() {
+  if (!navigator.onLine) {
+    render();
+    return;
+  }
+  const q = loadQueue();
+  while (q.length && navigator.onLine) {
+    const event = q[0];
+    try {
+      await api.postStatus(event.trip_number, {
+        status: event.status,
+        at: event.at,
+        note: event.note,
+        reason: event.reason,
+        client_event_id: event.client_event_id,
+      });
+      q.shift();
+      saveQueue(q);
+      ui.statusError = null;
+    } catch (err) {
+      if (err.status === 409 && err.body?.error === "not_assigned") {
+        q.shift();
+        saveQueue(q);
+        clearOverlay(event.trip_number);
+        ui.statusError = err.body.message || "Change — call dispatch for confirmation.";
+        cache = null;
+      } else if (err.status === 409 && err.body?.error === "stale_status") {
+        q.shift();
+        saveQueue(q);
+        if (event.prev && Object.keys(event.prev).length) setOverlay(event.trip_number, event.prev);
+        else clearOverlay(event.trip_number);
+        ui.statusError = err.body.message || "Status already moved forward.";
+      } else {
+        break;
+      }
+    }
+  }
+  render();
 }
 
 function mapsUrl(address) {
@@ -109,11 +290,13 @@ function parseRoute() {
   };
 }
 
-function syncStrip(pendingCount = 0) {
+function syncStrip() {
+  const pending = pendingCount();
   const online = navigator.onLine;
+  const line = online ? "Online" : "Offline";
   return `<div class="sync ${online ? "" : "offline"}" role="status">
-    <span><span class="dot"></span> ${online ? "Online" : "Offline"}</span>
-    <span>${pendingCount} pending</span>
+    <span><span class="dot"></span> ${line}</span>
+    <span>${pending} pending</span>
   </div>`;
 }
 
@@ -161,7 +344,7 @@ function formatWindow(start, end) {
 function renderLogin(error = "") {
   const app = document.getElementById("app");
   app.innerHTML = `
-    ${syncStrip(0)}
+    ${syncStrip()}
     <section class="screen login">
       <p class="lead">Inbound pickups</p>
       <h1>Sign in</h1>
@@ -215,7 +398,7 @@ function renderDay(data) {
   const app = document.getElementById("app");
   const changes = flattenChanges(data);
   app.innerHTML = `
-    ${syncStrip(0)}
+    ${syncStrip()}
     ${changeBanner(changes)}
     <header class="header">
       <div>
@@ -228,11 +411,13 @@ function renderDay(data) {
       ${
         data.assignments.length
           ? data.assignments
-              .map((row) => {
+              .map((raw) => {
+                const row = withLocal(raw);
                 const changed = row.highlight_stop || (row.changes || []).length;
+                const st = row.status ? STATUS_LABEL[row.status] || row.status : "";
                 return `<a class="trip-card" href="/trip/${encodeURIComponent(row.trip_number)}">
                   <div class="num">${escapeHtml(row.trip_number)}</div>
-                  <div class="meta">${escapeHtml(row.stop_name)}</div>
+                  <div class="meta">${escapeHtml(row.stop_name)}${st ? ` · ${escapeHtml(st)}` : ""}</div>
                   ${changed ? `<div class="changed">Change — call dispatch</div>` : ""}
                 </a>`;
               })
@@ -254,11 +439,11 @@ function renderDay(data) {
 }
 
 function renderTrip(data, tripNumber, tab) {
-  const row = data.assignments.find((t) => t.trip_number === tripNumber);
+  const raw = data.assignments.find((t) => t.trip_number === tripNumber);
   const app = document.getElementById("app");
-  if (!row) {
+  if (!raw) {
     app.innerHTML = `
-      ${syncStrip(0)}
+      ${syncStrip()}
       <header class="header">
         <button class="ghost" id="back" type="button">Back</button>
         <h1>Trip ${escapeHtml(tripNumber)}</h1>
@@ -269,6 +454,7 @@ function renderTrip(data, tripNumber, tab) {
     return;
   }
 
+  const row = withLocal(raw);
   const tripChanges = row.changes || [];
   const body =
     tab === "notes"
@@ -276,15 +462,19 @@ function renderTrip(data, tripNumber, tab) {
       : tab === "changes"
         ? renderChangeLog(tripChanges)
         : renderStop(row);
+  const current = row.status;
+  const fwd = forwardOf(row);
+  const fwdRank = statusRank(fwd);
 
   app.innerHTML = `
-    ${syncStrip(0)}
+    ${syncStrip()}
+    ${ui.statusError ? `<div class="banner">${escapeHtml(ui.statusError)}</div>` : ""}
     ${changeBanner(tripChanges)}
     <header class="header">
       <button class="ghost" id="back" type="button">Back</button>
       <div>
         <h1>${escapeHtml(row.trip_number)}</h1>
-        <div class="sub">${escapeHtml(data.driver_name)}</div>
+        <div class="sub">${escapeHtml(data.driver_name)}${current ? ` · ${escapeHtml(STATUS_LABEL[current] || current)}` : ""}</div>
       </div>
     </header>
     <div class="tabs">
@@ -294,23 +484,74 @@ function renderTrip(data, tripNumber, tab) {
     </div>
     <div class="list">${body}</div>
     <section class="status-block">
-      <h3>Status — coming in Phase 2</h3>
+      <h3>Status</h3>
       <div class="status-grid">
-        <button type="button" disabled>En route <small>Phase 2</small></button>
-        <button type="button" disabled>Arrived <small>Phase 2</small></button>
-        <button type="button" disabled>Loading <small>Phase 2</small></button>
-        <button type="button" disabled>Loaded <small>Phase 2</small></button>
-        <button type="button" disabled>Complete <small>Phase 2</small></button>
-        <button type="button" disabled>Exception <small>Phase 2</small></button>
+        ${STATUS_ORDER.map((code) => {
+          const r = statusRank(code);
+          const isCurrent = current === code;
+          const disabled = fwdRank >= 0 && r < fwdRank;
+          return `<button type="button" data-status="${code}" class="${isCurrent ? "current" : ""}" ${disabled ? "disabled" : ""}>${STATUS_LABEL[code]}${isCurrent ? "<small>Now</small>" : ""}</button>`;
+        }).join("")}
+        <button type="button" data-status="exception" class="${current === "exception" ? "current" : ""}">Exception${current === "exception" ? "<small>Now</small>" : ""}</button>
       </div>
+      ${ui.exceptionOpen ? renderExceptionForm(row) : ""}
     </section>
   `;
-  document.getElementById("back").addEventListener("click", () => navigate("/day"));
+  document.getElementById("back").addEventListener("click", () => {
+    ui.exceptionOpen = false;
+    navigate("/day");
+  });
   app.querySelectorAll("[data-tab]").forEach((btn) => {
     btn.addEventListener("click", () => {
+      ui.exceptionOpen = false;
       navigate(`/trip/${encodeURIComponent(tripNumber)}?tab=${btn.dataset.tab}`);
     });
   });
+  app.querySelectorAll("[data-status]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const code = btn.dataset.status;
+      if (code === "exception") {
+        ui.exceptionOpen = true;
+        render();
+        return;
+      }
+      tapStatus(tripNumber, code);
+    });
+  });
+  const form = document.getElementById("exception-form");
+  if (form) {
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const reason = String(fd.get("reason") || "");
+      const note = String(fd.get("note") || "").trim();
+      if (!reason) return;
+      if (reason === "other" && !note) return;
+      tapStatus(tripNumber, "exception", { reason, note: note || null });
+    });
+    document.getElementById("exception-cancel")?.addEventListener("click", () => {
+      ui.exceptionOpen = false;
+      render();
+    });
+  }
+}
+
+function renderExceptionForm(row) {
+  return `
+    <form id="exception-form" class="exception-panel">
+      <p>What happened at ${escapeHtml(row.stop_name)}?</p>
+      <div class="reason-grid">
+        ${EXCEPTION_REASONS.map(
+          (r) =>
+            `<label><input type="radio" name="reason" value="${r.id}" required /> ${escapeHtml(r.label)}</label>`,
+        ).join("")}
+      </div>
+      <label class="field" for="exception-note">Note</label>
+      <input id="exception-note" name="note" placeholder="Optional — required for Other" />
+      <button class="primary" type="submit">Send exception</button>
+      <button class="ghost" type="button" id="exception-cancel">Cancel</button>
+    </form>
+  `;
 }
 
 function renderStop(row) {
@@ -398,13 +639,13 @@ async function render() {
       clearSession();
       cache = null;
       if (route.linkToken) {
-        app.innerHTML = `${syncStrip(0)}<p class="empty">This link is not valid.</p>`;
+        app.innerHTML = `${syncStrip()}<p class="empty">This link is not valid.</p>`;
         return;
       }
       renderLogin("Session expired. Sign in again.");
       return;
     }
-    app.innerHTML = `${syncStrip(0)}<p class="empty">Could not load assignments.</p>`;
+    app.innerHTML = `${syncStrip()}<p class="empty">Could not load assignments.</p>`;
   }
 }
 
@@ -412,7 +653,7 @@ window.addEventListener("popstate", () => {
   cache = null;
   render();
 });
-window.addEventListener("online", () => render());
+window.addEventListener("online", () => flushQueue());
 window.addEventListener("offline", () => render());
 
 if ("serviceWorker" in navigator) {

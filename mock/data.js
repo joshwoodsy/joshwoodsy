@@ -1,5 +1,7 @@
 /** Driver-scoped inbound read model. Phone never calls Steve or the TMS. */
 
+import { getLiveStatus } from "./status.js";
+
 export const SAMPLE_DATE = "2026-09-17";
 export const EXPIRES_AT = "2026-09-19T12:00:00-05:00";
 
@@ -183,6 +185,17 @@ export function assignmentsPayload(driver, date) {
     .sort((a, b) => {
       if (a.stop_sequence !== b.stop_sequence) return a.stop_sequence - b.stop_sequence;
       return a.trip_number.localeCompare(b.trip_number);
+    })
+    .map((row) => {
+      const live = getLiveStatus(driver.driver_id, row.trip_number);
+      if (!live) return { ...row, status: row.status };
+      return {
+        ...row,
+        status: live.status,
+        status_at: live.at,
+        status_reason: live.reason,
+        status_note: live.note,
+      };
     });
   return {
     driver_id: driver.driver_id,

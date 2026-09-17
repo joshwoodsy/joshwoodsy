@@ -131,15 +131,109 @@ test("Phase 0 mock driver API and /d/{link_token} routes", async (t) => {
   });
   assert.equal(deep.body.open_trip, "643210");
 
-  const readonly = await json("/api/driver/stops/643053/status", {
+  const arrived = await json("/api/driver/stops/643053/status", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${company.body.token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ status: "arrived" }),
+    body: JSON.stringify({
+      status: "arrived",
+      at: "2026-09-17T14:22:03-05:00",
+      note: null,
+      reason: null,
+      client_event_id: "3f2a9c0e-4b1d-4e8a-9c11-7a0b2d55e101",
+    }),
   });
-  assert.equal(readonly.status, 501);
+  assert.equal(arrived.status, 200);
+  assert.equal(arrived.body.accepted, true);
+  assert.equal(arrived.body.landed, "planner");
+  assert.equal(arrived.body.status, "arrived");
+
+  const replay = await json("/api/driver/stops/643053/status", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${company.body.token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      status: "arrived",
+      at: "2026-09-17T14:22:03-05:00",
+      client_event_id: "3f2a9c0e-4b1d-4e8a-9c11-7a0b2d55e101",
+    }),
+  });
+  assert.equal(replay.status, 200);
+  assert.equal(replay.body.status, "arrived");
+
+  const back = await json("/api/driver/stops/643053/status", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${company.body.token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      status: "en_route",
+      at: "2026-09-17T14:23:00-05:00",
+      client_event_id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+    }),
+  });
+  assert.equal(back.status, 409);
+  assert.equal(back.body.error, "stale_status");
+
+  const ex = await json("/api/driver/stops/643053/status", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${company.body.token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      status: "exception",
+      reason: "late",
+      note: "Dock locked",
+      at: "2026-09-17T14:24:00-05:00",
+      client_event_id: "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+    }),
+  });
+  assert.equal(ex.status, 200);
+  assert.equal(ex.body.status, "exception");
+
+  const after = await json("/api/driver/me/assignments?date=2026-09-17", {
+    headers: { Authorization: `Bearer ${company.body.token}` },
+  });
+  const updated = after.body.assignments.find((a) => a.trip_number === "643053");
+  assert.equal(updated.status, "exception");
+  assert.equal(updated.status_reason, "late");
+
+  const stolen = await json("/api/driver/stops/643210/status", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${company.body.token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      status: "arrived",
+      at: "2026-09-17T14:25:00-05:00",
+      client_event_id: "cccccccc-dddd-4eee-8fff-000000000000",
+    }),
+  });
+  assert.equal(stolen.status, 409);
+  assert.equal(stolen.body.error, "not_assigned");
+  assert.match(stolen.body.message, /call dispatch for confirmation/);
+
+  const ghost = await json("/api/driver/stops/641111/status", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${company.body.token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      status: "arrived",
+      at: "2026-09-17T14:26:00-05:00",
+      client_event_id: "dddddddd-eeee-4fff-8000-111111111111",
+    }),
+  });
+  assert.equal(ghost.status, 409);
+  assert.equal(ghost.body.error, "not_assigned");
 
   const dayPage = await fetch(`${base}/d/lt_mike_17`);
   assert.equal(dayPage.status, 200);
