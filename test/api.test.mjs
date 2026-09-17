@@ -85,6 +85,9 @@ test("Phase 0 mock driver API and /d/{link_token} routes", async (t) => {
   assert.ok(trip);
   assert.equal(trip.source, "inbound_5001");
   assert.equal(trip.lane, "inbound");
+  assert.ok(assignments.body.assignments.every((a) => a.source === "inbound_5001"));
+  assert.ok(assignments.body.assignments.every((a) => a.lane === "inbound"));
+  assert.equal(assignments.body.lane_filter, "inbound");
   assert.equal(trip.status, null);
   assert.equal(trip.highlight_stop, true);
   assert.equal(trip.pickup_number, "PU-8821");

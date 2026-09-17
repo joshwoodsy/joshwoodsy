@@ -2,7 +2,7 @@
 
 Phase 1 inbound, trip-number-first, read-only app for **all drivers** (company, broker, owner-op).
 
-Phones do not call Steve or the TMS. This repo serves a **mock** driver API only. Desk manifests still return to the TMS via Steve — not from this app.
+Phones do not call Steve or the TMS. This repo serves a **mock** driver API only. Desk manifests still return to the TMS via Steve — not from this app. Outbound (`http://10.0.0.11:5002`) is locked on the desk; Phase 1 has no outbound screens. Assignment JSON keeps `lane` / `source` (`inbound_5001` now, `outbound_5002` later).
 
 ## Run locally
 

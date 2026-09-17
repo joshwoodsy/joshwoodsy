@@ -52,9 +52,9 @@ function png(size, paint) {
 }
 
 function paintPin(x, y, s) {
-  const bg = [14, 20, 24, 255];
-  const pin = [61, 184, 232, 255];
-  const hole = [14, 20, 24, 255];
+  const bg = [0, 51, 160, 255];
+  const pin = [255, 255, 255, 255];
+  const hole = [0, 51, 160, 255];
   const cx = s / 2;
   const cy = s * 0.4;
   const r = s * 0.22;

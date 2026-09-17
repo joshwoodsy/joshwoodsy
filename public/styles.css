@@ -1,15 +1,19 @@
 :root {
-  --bg: #0e1418;
-  --card: #1a2329;
-  --card-hi: #243038;
-  --line: #2d3b44;
-  --text: #f2f4f5;
-  --muted: #9aa6ad;
-  --accent: #3db8e8;
-  --warn: #f0b429;
-  --warn-bg: #3a2d0e;
-  --ok: #3ecf8e;
-  --danger: #e85d4c;
+  --royal: #0033a0;
+  --royal-deep: #00257a;
+  --white: #ffffff;
+  --bg: #ffffff;
+  --card: #ffffff;
+  --text: #0033a0;
+  --text-strong: #001f66;
+  --muted: #2f4a8a;
+  --line: #9db0d9;
+  --wash: #e8eefc;
+  --warn-bg: #0033a0;
+  --warn: #ffffff;
+  --ok: #ffffff;
+  --offline: #b00020;
+  --danger: #b00020;
   --tap: 56px;
   --radius: 14px;
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -44,6 +48,7 @@ body {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+  background: var(--white);
 }
 
 button,
@@ -69,7 +74,7 @@ a.btn {
 
 button:disabled,
 a.btn.disabled {
-  opacity: 0.45;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
@@ -77,14 +82,19 @@ input {
   width: 100%;
   min-height: var(--tap);
   border-radius: var(--radius);
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--text);
+  border: 2px solid var(--royal);
+  background: var(--white);
+  color: var(--text-strong);
   padding: 0 16px;
 }
 
+input::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
 input:focus {
-  outline: 2px solid var(--accent);
+  outline: 3px solid var(--royal);
   outline-offset: 2px;
 }
 
@@ -93,31 +103,33 @@ input:focus {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 16px;
-  font-size: 14px;
-  color: var(--muted);
-  border-bottom: 1px solid var(--line);
+  padding: 12px 16px;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--white);
+  background: var(--royal);
 }
 
 .sync .dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--ok);
+  background: var(--white);
   display: inline-block;
 }
 
-.sync.offline .dot {
-  background: var(--danger);
+.sync.offline {
+  background: var(--offline);
 }
 
 .banner {
   margin: 12px 16px 0;
   padding: 14px 16px;
-  background: var(--warn-bg);
-  color: var(--warn);
+  background: var(--royal);
+  color: var(--white);
   border-radius: var(--radius);
-  font-weight: 650;
+  font-weight: 750;
+  font-size: 1.05rem;
 }
 
 .header {
@@ -129,21 +141,23 @@ input:focus {
 
 .header h1 {
   margin: 0;
-  font-size: 1.35rem;
+  font-size: 1.45rem;
   letter-spacing: 0.01em;
+  color: var(--royal);
 }
 
 .header .sub {
   color: var(--muted);
-  font-size: 15px;
+  font-size: 16px;
   margin-top: 2px;
 }
 
 .ghost {
   background: transparent;
-  color: var(--accent);
+  color: var(--royal);
   min-width: var(--tap);
   padding: 0 10px;
+  font-weight: 750;
 }
 
 .list {
@@ -155,31 +169,32 @@ input:focus {
 
 .trip-card {
   display: block;
-  background: var(--card);
+  background: var(--white);
   border-radius: var(--radius);
   padding: 18px 16px;
   min-height: 88px;
-  color: inherit;
+  color: var(--royal);
   text-decoration: none;
-  border: 1px solid var(--line);
+  border: 2px solid var(--royal);
 }
 
 .trip-card .num {
-  font-size: 2rem;
-  font-weight: 750;
+  font-size: 2.15rem;
+  font-weight: 800;
   letter-spacing: 0.06em;
   font-variant-numeric: tabular-nums;
+  color: var(--royal);
 }
 
 .trip-card .meta {
   color: var(--muted);
   margin-top: 6px;
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .trip-card .changed {
-  color: var(--warn);
-  font-weight: 650;
+  color: var(--royal);
+  font-weight: 750;
   margin-top: 8px;
 }
 
@@ -195,7 +210,8 @@ input:focus {
 
 .login h1 {
   margin: 8px 0 4px;
-  font-size: 1.8rem;
+  font-size: 2rem;
+  color: var(--royal);
 }
 
 .login p.lead {
@@ -209,41 +225,44 @@ input:focus {
 
 .field label {
   display: block;
-  font-size: 14px;
-  color: var(--muted);
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--royal);
   margin-bottom: 6px;
 }
 
 .primary {
   width: 100%;
-  background: var(--accent);
-  color: #06202b;
+  background: var(--royal);
+  color: var(--white);
   font-weight: 750;
   margin-top: 8px;
+}
+
+.primary:active {
+  background: var(--royal-deep);
 }
 
 .error {
   color: var(--danger);
   margin: 8px 0 0;
   min-height: 1.3em;
+  font-weight: 650;
 }
 
 .hint {
   margin-top: 28px;
   padding: 16px;
-  background: var(--card);
+  background: var(--white);
+  border: 2px solid var(--line);
   border-radius: var(--radius);
   color: var(--muted);
-  font-size: 14px;
-}
-
-.hint code {
-  color: var(--text);
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .hint a {
-  color: var(--accent);
+  color: var(--royal);
+  font-weight: 650;
 }
 
 .tabs {
@@ -254,31 +273,33 @@ input:focus {
 
 .tabs button {
   flex: 1;
-  background: var(--card);
-  color: var(--muted);
+  background: var(--white);
+  color: var(--royal);
+  border: 2px solid var(--royal);
+  font-weight: 650;
 }
 
 .tabs button.active {
-  background: var(--card-hi);
-  color: var(--text);
-  font-weight: 700;
+  background: var(--royal);
+  color: var(--white);
+  font-weight: 800;
 }
 
 .stop {
-  background: var(--card);
-  border: 1px solid var(--line);
+  background: var(--white);
+  border: 2px solid var(--royal);
   border-radius: var(--radius);
   padding: 16px;
 }
 
 .stop.changed {
-  border-color: var(--warn);
-  box-shadow: inset 4px 0 0 var(--warn);
+  box-shadow: inset 6px 0 0 var(--royal);
 }
 
 .stop h2 {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: 1.3rem;
+  color: var(--royal);
 }
 
 .stop .addr {
@@ -295,13 +316,15 @@ input:focus {
 .facts dt {
   color: var(--muted);
   font-size: 13px;
+  font-weight: 650;
   margin: 0;
 }
 
 .facts dd {
   margin: 2px 0 0;
-  font-weight: 700;
-  font-size: 1.05rem;
+  font-weight: 800;
+  font-size: 1.1rem;
+  color: var(--text-strong);
 }
 
 .row-actions {
@@ -313,23 +336,26 @@ input:focus {
 
 .window {
   flex: 1;
-  background: var(--card-hi);
+  background: var(--wash);
   border-radius: var(--radius);
   padding: 12px 14px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   min-height: var(--tap);
+  color: var(--text-strong);
+  font-weight: 750;
 }
 
 .window span {
   color: var(--muted);
   font-size: 13px;
+  font-weight: 650;
 }
 
 .maps {
-  background: var(--accent);
-  color: #06202b;
+  background: var(--royal);
+  color: var(--white);
   font-weight: 750;
   flex: 0 0 auto;
   min-width: 132px;
@@ -337,28 +363,34 @@ input:focus {
 
 .notes {
   white-space: pre-wrap;
-  background: var(--card);
+  background: var(--white);
   border-radius: var(--radius);
-  padding: 16px;
-  min-height: 120px;
+  padding: 8px 0 0;
+  min-height: 80px;
+  color: var(--text-strong);
+  font-size: 1.05rem;
 }
 
 .changelog {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  margin: 0;
+  padding: 0;
 }
 
 .changelog li {
   list-style: none;
-  background: var(--card);
+  background: var(--white);
+  border: 2px solid var(--royal);
   border-radius: var(--radius);
   padding: 14px 16px;
+  color: var(--text-strong);
 }
 
-.changelog {
-  margin: 0;
-  padding: 0;
+.changelog .meta {
+  color: var(--muted);
+  margin-top: 4px;
 }
 
 .status-block {
@@ -369,7 +401,7 @@ input:focus {
   margin: 8px 0;
   font-size: 14px;
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 650;
 }
 
 .status-grid {
@@ -379,8 +411,9 @@ input:focus {
 }
 
 .status-grid button {
-  background: var(--card);
-  color: var(--text);
+  background: var(--white);
+  color: var(--royal);
+  border: 2px solid var(--line);
   flex-direction: column;
   padding: 10px;
 }

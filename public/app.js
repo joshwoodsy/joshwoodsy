@@ -374,16 +374,8 @@ async function render() {
   const route = parseRoute();
   const app = document.getElementById("app");
   try {
-    if (route.linkToken && !sessionStorage.getItem(TOKEN_KEY)) {
+    if (route.linkToken) {
       await consumeLink(route.linkToken, route.tripNumber);
-      return;
-    }
-    if (route.linkToken && route.tripNumber && sessionStorage.getItem(TOKEN_KEY)) {
-      navigate(`/trip/${encodeURIComponent(route.tripNumber)}`, true);
-      return;
-    }
-    if (route.linkToken && sessionStorage.getItem(TOKEN_KEY)) {
-      navigate("/day", true);
       return;
     }
 

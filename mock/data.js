@@ -3,6 +3,18 @@
 export const SAMPLE_DATE = "2026-09-17";
 export const EXPIRES_AT = "2026-09-19T12:00:00-05:00";
 
+/** Routing-tool `source`. Phase 1 mock emits inbound only. Never steve_8765 / TMS. */
+export const SOURCE = {
+  inbound: "inbound_5001",
+  /** Reserved for later My Day rows from http://10.0.0.11:5002 — no outbound screens in Phase 1. */
+  outbound: "outbound_5002",
+};
+
+export const LANE = {
+  inbound: "inbound",
+  outbound: "outbound",
+};
+
 export const DRIVERS = [
   {
     driver_id: 1042,
@@ -36,8 +48,8 @@ export const ASSIGNMENTS = {
   1042: [
     {
       trip_number: "643053",
-      lane: "inbound",
-      source: "inbound_5001",
+      lane: LANE.inbound,
+      source: SOURCE.inbound,
       stop_sequence: 1,
       stop_name: "Sysco Milwaukee",
       stop_address: "1051 Rawson Cir, Oak Creek, WI 53154",
@@ -65,8 +77,8 @@ export const ASSIGNMENTS = {
     },
     {
       trip_number: "643088",
-      lane: "inbound",
-      source: "inbound_5001",
+      lane: LANE.inbound,
+      source: SOURCE.inbound,
       stop_sequence: 2,
       stop_name: "US Foods Milwaukee",
       stop_address: "7800 S 6th St, Oak Creek, WI 53154",
@@ -87,8 +99,8 @@ export const ASSIGNMENTS = {
   2208: [
     {
       trip_number: "643210",
-      lane: "inbound",
-      source: "inbound_5001",
+      lane: LANE.inbound,
+      source: SOURCE.inbound,
       stop_sequence: 1,
       stop_name: "Performance Foodservice — La Crosse",
       stop_address: "4000 Commerce Dr, La Crosse, WI 54603",
@@ -166,16 +178,18 @@ export function findDriverByAuth({ phone, employee_id, pin }) {
 
 export function assignmentsPayload(driver, date) {
   const day = date || driver.date;
-  const rows = (ASSIGNMENTS[driver.driver_id] || []).slice().sort((a, b) => {
-    if (a.stop_sequence !== b.stop_sequence) return a.stop_sequence - b.stop_sequence;
-    return a.trip_number.localeCompare(b.trip_number);
-  });
+  const rows = (ASSIGNMENTS[driver.driver_id] || [])
+    .filter((row) => row.lane === LANE.inbound)
+    .sort((a, b) => {
+      if (a.stop_sequence !== b.stop_sequence) return a.stop_sequence - b.stop_sequence;
+      return a.trip_number.localeCompare(b.trip_number);
+    });
   return {
     driver_id: driver.driver_id,
     driver_name: driver.driver_name,
     driver_kind: driver.driver_kind,
     date: day,
-    lane_filter: "inbound",
+    lane_filter: LANE.inbound,
     plan_version: driver.plan_version,
     assignments: rows,
   };
