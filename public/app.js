@@ -20,9 +20,13 @@ const EXCEPTION_REASONS = [
   { id: "other", label: "Other" },
 ];
 
+const SMS_FROM = "+18555016160";
+
 const ui = {
   exceptionOpen: false,
   statusError: null,
+  smsLog: [],
+  notifyHint: "",
 };
 
 const api = {
@@ -52,6 +56,16 @@ const api = {
       payload,
       headers,
     );
+  },
+  async alerts(after) {
+    return request("GET", `/api/driver/me/alerts?after=${Number(after) || 0}`);
+  },
+  async demoDispatchChange(trip_number) {
+    return request("POST", "/api/driver/demo/dispatch-change", {
+      trip_number: trip_number || null,
+      change_type: "window_change",
+      summary: "Window 08:00–10:00",
+    });
   },
 };
 
@@ -100,6 +114,8 @@ function clearSession() {
   sessionStorage.removeItem(ETAG_KEY);
   ui.exceptionOpen = false;
   ui.statusError = null;
+  ui.smsLog = [];
+  ui.notifyHint = "";
 }
 
 function currentSession() {
@@ -112,6 +128,146 @@ function currentSession() {
 
 function sessionDate() {
   return currentSession()?.date || new Date().toISOString().slice(0, 10);
+}
+
+function alertCursorKey() {
+  return `driver.alertId.${sessionStorage.getItem(TOKEN_KEY) || "anon"}`;
+}
+
+function lastAlertId() {
+  return Number(sessionStorage.getItem(alertCursorKey()) || 0);
+}
+
+function setLastAlertId(id) {
+  sessionStorage.setItem(alertCursorKey(), String(id));
+}
+
+function isIos() {
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+function isStandalone() {
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    Boolean(navigator.standalone)
+  );
+}
+
+function canUseNotifications() {
+  return typeof Notification !== "undefined" && "serviceWorker" in navigator;
+}
+
+function notifySupportNote() {
+  if (!canUseNotifications()) {
+    return "This phone can't show in-app alerts. Dispatch will text a link instead.";
+  }
+  if (isIos() && !isStandalone()) {
+    return "On iPhone, Add to Home Screen (Safari) to get alerts. Until then, dispatch texts a link.";
+  }
+  return "";
+}
+
+async function fireOsNotification(alert) {
+  if (!canUseNotifications()) return false;
+  if (Notification.permission !== "granted") return false;
+  const reg = await navigator.serviceWorker.ready;
+  const target = reg.active || navigator.serviceWorker.controller;
+  if (!target) return false;
+  target.postMessage({
+    type: "dispatch-change",
+    body: alert.message,
+    path: `/trip/${alert.trip_number}`,
+    url: alert.link_path,
+    tag: `trip-${alert.trip_number}`,
+  });
+  return true;
+}
+
+function recordSms(alert) {
+  const body = alert.sms_body || alert.message;
+  const line = `${smsLogLabel(alert)}: ${body}`;
+  ui.smsLog = [line, ...ui.smsLog.filter((s) => s !== line)].slice(0, 5);
+}
+
+function smsLogLabel(alert) {
+  if (alert.sent || alert.sms_status === "sent") return `SMS sent from ${SMS_FROM}`;
+  if (alert.sms_error_code || alert.sms_status === "failed") {
+    const code = alert.sms_error_code || "error";
+    return `SMS failed (${code}) — copy still logged`;
+  }
+  return `SMS would send from ${SMS_FROM}`;
+}
+
+async function enableNotifications() {
+  ui.notifyHint = "";
+  if (!canUseNotifications()) {
+    ui.notifyHint = notifySupportNote();
+    render();
+    return;
+  }
+  if (isIos() && !isStandalone()) {
+    ui.notifyHint = notifySupportNote();
+    render();
+    return;
+  }
+  const result = await Notification.requestPermission();
+  if (result !== "granted") {
+    ui.notifyHint = "Notifications blocked. Dispatch will text a link instead.";
+  }
+  render();
+}
+
+async function applyIncomingAlert(alert) {
+  recordSms(alert);
+  if (alert.alert_id) setLastAlertId(alert.alert_id);
+  sessionStorage.removeItem(ETAG_KEY);
+  sessionStorage.removeItem(ASSIGN_KEY);
+  cache = null;
+  await fireOsNotification(alert);
+}
+
+async function pollAlerts() {
+  if (!sessionStorage.getItem(TOKEN_KEY)) return;
+  try {
+    const data = await api.alerts(lastAlertId());
+    const list = data.alerts || [];
+    if (!list.length) return;
+    for (const alert of list) {
+      if (alert.id) setLastAlertId(alert.id);
+      recordSms(alert);
+      await fireOsNotification(alert);
+    }
+    cache = null;
+    sessionStorage.removeItem(ETAG_KEY);
+    sessionStorage.removeItem(ASSIGN_KEY);
+    render();
+  } catch {
+    /* ignore poll errors */
+  }
+}
+
+async function simulateDispatchChange() {
+  const result = await api.demoDispatchChange();
+  if (result.sent) {
+    ui.notifyHint = `SMS sent from ${SMS_FROM}.`;
+  } else if (result.sms_error_code || result.sms_status === "failed") {
+    const code = result.sms_error_code || "error";
+    const msg = result.sms_error ? ` ${result.sms_error}` : "";
+    ui.notifyHint = `SMS failed (${code}).${msg} Dispatch copy is still on this screen.`;
+  } else {
+    ui.notifyHint = `SMS would send from ${SMS_FROM} (dry-run).`;
+  }
+  await applyIncomingAlert({
+    alert_id: result.alert_id,
+    trip_number: result.trip_numbers[0],
+    message: result.message,
+    sms_body: result.sms_body,
+    link_path: new URL(result.link_url).pathname,
+    sent: result.sent,
+    dry_run: result.dry_run,
+    sms_error_code: result.sms_error_code,
+  });
+  render();
 }
 
 function queueKey() {
@@ -367,9 +523,12 @@ function renderLogin(error = "") {
       </form>
       <div class="hint">
         <strong>Demo</strong><br />
+        TEST: phone 8636048073 or ID 3636 / JW-1 · PIN 3636<br />
         Company: phone 9205550142 or ID 1042 · PIN 1234<br />
         Broker: phone 4145550199 · PIN 2468 (no employee ID)<br />
         Share links:
+        <div><a href="/d/lt_josh_17">/d/lt_josh_17</a></div>
+        <div><a href="/d/lt_josh_17/647701">/d/lt_josh_17/647701</a></div>
         <div><a href="/d/lt_mike_17">/d/lt_mike_17</a></div>
         <div><a href="/d/lt_mike_17/643053">/d/lt_mike_17/643053</a></div>
         <div><a href="/d/lt_rivera_17">/d/lt_rivera_17</a></div>
@@ -394,6 +553,46 @@ function renderLogin(error = "") {
   });
 }
 
+function notifyPanel() {
+  const perm = canUseNotifications() ? Notification.permission : "unsupported";
+  const iosBlock = isIos() && !isStandalone();
+  const showEnable = canUseNotifications() && perm === "default" && !iosBlock;
+  const on = perm === "granted" && !iosBlock;
+  const note = ui.notifyHint || (iosBlock || !canUseNotifications() ? notifySupportNote() : "");
+  return `
+    <section class="notify-panel" id="notify-panel">
+      <h3>Alerts</h3>
+      ${note ? `<p class="notify-note">${escapeHtml(note)}</p>` : ""}
+      ${
+        showEnable
+          ? `<button class="primary" type="button" id="enable-notify">Enable notifications</button>`
+          : ""
+      }
+      ${on ? `<p class="notify-note">Notifications on. Dispatch changes will pop on this phone.</p>` : ""}
+      ${perm === "denied" ? `<p class="notify-note">Notifications blocked. Dispatch will text a link instead.</p>` : ""}
+      <p class="notify-note">Dispatch texts from ${SMS_FROM}. SMS still goes out even if alerts are on.</p>
+      <button class="ghost" type="button" id="test-dispatch">Test dispatch change</button>
+      ${
+        ui.smsLog.length
+          ? `<div class="sms-log">${ui.smsLog
+              .map((s) => `<p>${escapeHtml(s)}</p>`)
+              .join("")}</div>`
+          : ""
+      }
+    </section>
+  `;
+}
+
+function bindNotifyPanel() {
+  document.getElementById("enable-notify")?.addEventListener("click", () => enableNotifications());
+  document.getElementById("test-dispatch")?.addEventListener("click", () => {
+    simulateDispatchChange().catch(() => {
+      ui.notifyHint = "Could not simulate a dispatch change.";
+      render();
+    });
+  });
+}
+
 function renderDay(data) {
   const app = document.getElementById("app");
   const changes = flattenChanges(data);
@@ -403,10 +602,11 @@ function renderDay(data) {
     <header class="header">
       <div>
         <h1>My day</h1>
-        <div class="sub">${escapeHtml(data.driver_name)} · ${escapeHtml(data.date)}</div>
+        <div class="sub">${escapeHtml(data.driver_name)}${data.tester ? " · TEST" : ""} · ${escapeHtml(data.date)}</div>
       </div>
       <button class="ghost" id="sign-out" type="button">Sign out</button>
     </header>
+    ${notifyPanel()}
     <div class="list">
       ${
         data.assignments.length
@@ -430,6 +630,7 @@ function renderDay(data) {
     clearSession();
     navigate("/", true);
   });
+  bindNotifyPanel();
   app.querySelectorAll(".trip-card").forEach((el) => {
     el.addEventListener("click", (e) => {
       e.preventDefault();
@@ -657,7 +858,20 @@ window.addEventListener("online", () => flushQueue());
 window.addEventListener("offline", () => render());
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch(() => {});
+  navigator.serviceWorker
+    .register("/sw.js", { updateViaCache: "none" })
+    .catch(() => {});
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    const path = event.data?.path;
+    if (event.data?.type === "open-trip" && path) {
+      cache = null;
+      navigate(path.startsWith("/") ? path : `/${path}`, true);
+    }
+  });
 }
+
+setInterval(() => {
+  if (sessionStorage.getItem(TOKEN_KEY)) pollAlerts();
+}, 4000);
 
 render();

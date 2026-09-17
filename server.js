@@ -11,6 +11,8 @@ import {
   sessionPayload,
 } from "./mock/data.js";
 import { applyStatusPost } from "./mock/status.js";
+import { alertsSince, applyDispatchChange, mockDeskNotify } from "./mock/notify.js";
+import { twilioStatus } from "./mock/sms.js";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const publicDir = join(root, "public");
@@ -89,7 +91,7 @@ async function handleApi(req, res, url) {
   const path = url.pathname;
 
   if (req.method === "GET" && path === "/api/health") {
-    json(res, 200, { ok: true, mock: true, steve: false, tms: false });
+    json(res, 200, { ok: true, mock: true, steve: false, tms: false, twilio: twilioStatus() });
     return true;
   }
 
@@ -166,6 +168,51 @@ async function handleApi(req, res, url) {
     return true;
   }
 
+  if (req.method === "GET" && path === "/api/driver/me/alerts") {
+    const session = findDriverBySession(bearer(req));
+    if (!session) {
+      json(res, 401, { error: "unauthorized" });
+      return true;
+    }
+    const after = Number(url.searchParams.get("after") || 0);
+    json(res, 200, { alerts: alertsSince(session.driver_id, after) });
+    return true;
+  }
+
+  if (req.method === "POST" && path === "/api/driver/demo/dispatch-change") {
+    const session = findDriverBySession(bearer(req));
+    if (!session) {
+      json(res, 401, { error: "unauthorized" });
+      return true;
+    }
+    const body = (await readJson(req)) || {};
+    const host = `http://${req.headers.host || "localhost:3000"}`;
+    const result = await applyDispatchChange(session, {
+      trip_number: body.trip_number,
+      change_type: body.change_type || "window_change",
+      summary: body.summary || "Window 08:00–10:00",
+      host,
+    });
+    json(res, result.http, result.json);
+    return true;
+  }
+
+  if (req.method === "POST" && path === "/api/driver/notify") {
+    if (bearer(req) !== "mock-desk") {
+      json(res, 403, { error: "service_only" });
+      return true;
+    }
+    const body = await readJson(req);
+    if (!body) {
+      json(res, 400, { error: "invalid_json" });
+      return true;
+    }
+    const host = `http://${req.headers.host || "localhost:3000"}`;
+    const result = await mockDeskNotify(body, host);
+    json(res, result.http, result.json);
+    return true;
+  }
+
   if (path.startsWith("/api/")) {
     json(res, 404, { error: "not_found" });
     return true;
@@ -196,4 +243,6 @@ server.listen(PORT, "0.0.0.0", () => {
   console.log(`  http://localhost:${PORT}/d/lt_mike_17/643053`);
   console.log(`  http://localhost:${PORT}/d/lt_rivera_17`);
   console.log(`  http://localhost:${PORT}/d/lt_rivera_17/643210`);
+  console.log(`  http://localhost:${PORT}/d/lt_josh_17`);
+  console.log(`  http://localhost:${PORT}/d/lt_josh_17/647701`);
 });

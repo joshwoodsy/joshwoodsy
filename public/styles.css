@@ -477,3 +477,40 @@ input:focus {
   color: var(--muted);
   padding: 24px 16px;
 }
+
+.notify-panel {
+  margin: 0 16px 8px;
+  padding: 14px 16px;
+  border: 2px solid var(--royal);
+  border-radius: var(--radius);
+  background: var(--white);
+}
+
+.notify-panel h3 {
+  margin: 0 0 8px;
+  color: var(--royal);
+  font-size: 1.05rem;
+}
+
+.notify-note {
+  color: var(--muted);
+  font-size: 15px;
+  margin: 0 0 10px;
+}
+
+.notify-panel .primary,
+.notify-panel .ghost {
+  width: 100%;
+  margin-top: 8px;
+  border: 2px solid var(--royal);
+}
+
+.sms-log {
+  margin-top: 12px;
+  color: var(--text-strong);
+  font-size: 14px;
+}
+
+.sms-log p {
+  margin: 0 0 8px;
+}
